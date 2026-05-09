@@ -1,0 +1,59 @@
+# domainturva — example configuration.
+#
+# Secrets reference env vars via the syntax shown below for SLACK_WEBHOOK_URL
+# and SMTP_USER. Undefined vars cause startup to fail; intentional empty
+# values must be set explicitly in the env.
+
+# Defaults applied when a site doesn't specify its own.
+check_interval: 60s
+ssl_check_interval: 12h
+domain_check_interval: 24h
+
+sites:
+  - name: example
+    url: https://example.com
+    expect_status: 200            # int or [200, 301]
+    expect_body_contains: ""      # optional substring match
+    check_ssl: true
+    check_domain: true
+    interval: 30s
+    timeout: 10s
+    retries: 2
+
+  - name: api
+    url: https://api.example.com/healthz
+    expect_status: [200, 204]
+    check_ssl: true
+    interval: 15s
+    timeout: 5s
+    retries: 3
+
+# Days-until-expiry thresholds at which to alert. Each threshold fires once
+# per cert/registration; renewals re-arm them.
+ssl_warn_days: [30, 14, 7, 1]
+domain_warn_days: [60, 30, 14, 7]
+
+notifiers:
+  - name: ops-slack
+    type: slack
+    webhook: ${SLACK_WEBHOOK_URL}
+
+  - name: oncall-email
+    type: smtp
+    host: smtp.fastmail.com
+    port: 587
+    username: ${SMTP_USER}
+    password: ${SMTP_PASS}
+    from: alerts@example.com
+    to: [me@example.com]
+
+# Map alert types -> notifier lists. `default` is used for any alert type
+# not listed here. Known alert types: down, recovered, ssl_expiring,
+# domain_expiring, ssl_untrusted, degraded_monitoring.
+routing:
+  default: [ops-slack]
+  domain_expiring: [ops-slack, oncall-email]
+  ssl_expiring: [ops-slack, oncall-email]
+
+storage:
+  path: /var/db/domainturva/domainturva.db

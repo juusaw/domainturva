@@ -1,0 +1,60 @@
+#!/bin/sh
+#
+# FreeBSD rc(8) script for domainturva.
+#
+# Install to /usr/local/etc/rc.d/domainturva (no extension), chmod +x.
+# Enable in /etc/rc.conf:
+#
+#   domainturva_enable="YES"
+#   # optional overrides:
+#   # domainturva_user="domainturva"
+#   # domainturva_config="/usr/local/etc/domainturva/config.yaml"
+#   # domainturva_env_file="/usr/local/etc/domainturva/env"
+#   # domainturva_log_format="json"
+#   # domainturva_log_level="info"
+#
+# Then:
+#   service domainturva start
+#
+# PROVIDE: domainturva
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="domainturva"
+rcvar="domainturva_enable"
+
+load_rc_config $name
+
+: ${domainturva_enable:="NO"}
+: ${domainturva_user:="domainturva"}
+: ${domainturva_config:="/usr/local/etc/domainturva/config.yaml"}
+: ${domainturva_env_file:="/usr/local/etc/domainturva/env"}
+: ${domainturva_log_format:="json"}
+: ${domainturva_log_level:="info"}
+: ${domainturva_logfile:="/var/log/domainturva.log"}
+
+pidfile="/var/run/${name}.pid"
+procname="/usr/local/bin/domainturva"
+
+# Use daemon(8) to background the process and manage the pidfile.
+command="/usr/sbin/daemon"
+command_args="-P ${pidfile} -r -t ${name} -o ${domainturva_logfile} -f ${procname} run \
+    --config ${domainturva_config} \
+    --log-format ${domainturva_log_format} \
+    --log-level ${domainturva_log_level}"
+
+start_precmd="domainturva_precmd"
+
+domainturva_precmd()
+{
+    if [ -f "${domainturva_env_file}" ]; then
+        # Source env file in the rc script context so daemon(8) inherits it.
+        . "${domainturva_env_file}"
+        export $(awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}' "${domainturva_env_file}")
+    fi
+    install -d -o "${domainturva_user}" -g "${domainturva_user}" /var/db/domainturva
+}
+
+run_rc_command "$1"
