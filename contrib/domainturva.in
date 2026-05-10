@@ -40,7 +40,7 @@ procname="/usr/local/bin/domainturva"
 
 # Use daemon(8) to background the process and manage the pidfile.
 command="/usr/sbin/daemon"
-command_args="-P ${pidfile} -r -t ${name} -o ${domainturva_logfile} -f ${procname} run \
+command_args="-p ${pidfile} -r -t ${name} -o ${domainturva_logfile} -f ${procname} run \
     --config ${domainturva_config} \
     --log-format ${domainturva_log_format} \
     --log-level ${domainturva_log_level}"
