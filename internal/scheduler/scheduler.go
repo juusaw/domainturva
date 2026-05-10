@@ -83,9 +83,15 @@ func (s *Scheduler) Run(ctx context.Context) {
 	wg.Wait()
 }
 
+// initialJitterCap bounds the first-run delay. We want the first check of
+// every (site, check-type) to run within a few seconds of startup so the
+// operator gets immediate feedback — especially for ssl/domain checks whose
+// intervals can be many hours. Some jitter is still useful when there are
+// many sites, to avoid all of them firing at the exact same instant.
+const initialJitterCap = 5 * time.Second
+
 func (s *Scheduler) runWorker(ctx context.Context, site config.Site, typ checker.CheckType, interval time.Duration, out chan<- checker.CheckResult) {
-	// Jittered first delay (0..interval) to avoid thundering herd.
-	jitter := jitterDuration(interval)
+	jitter := jitterDuration(min(interval, initialJitterCap))
 	timer := time.NewTimer(jitter)
 	defer timer.Stop()
 
