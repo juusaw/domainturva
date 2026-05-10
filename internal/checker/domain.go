@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	whoisparser "github.com/likexian/whois-parser"
 	"github.com/openrdap/rdap"
 
+	"github.com/juusomikkonen/domainturva/internal/buildinfo"
 	"github.com/juusomikkonen/domainturva/internal/config"
 	"github.com/juusomikkonen/domainturva/internal/storage"
 )
@@ -32,7 +34,9 @@ func NewDomainChecker(store storage.Storage, log *slog.Logger) *DomainChecker {
 		Storage:  store,
 		Logger:   log,
 		CacheTTL: 6 * time.Hour,
-		RDAP:     &rdap.Client{},
+		RDAP: &rdap.Client{
+			HTTP: &http.Client{Transport: buildinfo.WrapTransport(nil)},
+		},
 		WhoisQuery: func(domain string) (string, error) {
 			return whois.Whois(domain)
 		},

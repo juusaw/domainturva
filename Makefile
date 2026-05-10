@@ -1,5 +1,5 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -s -w -X main.version=$(VERSION)
+LDFLAGS := -s -w -X github.com/juusomikkonen/domainturva/internal/buildinfo.Version=$(VERSION)
 PKG := ./cmd/domainturva
 
 .PHONY: all build build-freebsd test lint run clean tidy

@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/juusomikkonen/domainturva/internal/buildinfo"
 )
 
 // Slack posts alerts to a Slack incoming-webhook URL.
@@ -69,6 +71,7 @@ func (s *Slack) Notify(ctx context.Context, a Alert) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	resp, err := s.Client.Do(req)
 	if err != nil {
 		return err

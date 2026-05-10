@@ -19,15 +19,13 @@ import (
 	"syscall"
 
 	"github.com/juusomikkonen/domainturva/internal/alerting"
+	"github.com/juusomikkonen/domainturva/internal/buildinfo"
 	"github.com/juusomikkonen/domainturva/internal/checker"
 	"github.com/juusomikkonen/domainturva/internal/config"
 	"github.com/juusomikkonen/domainturva/internal/notifier"
 	"github.com/juusomikkonen/domainturva/internal/scheduler"
 	"github.com/juusomikkonen/domainturva/internal/storage"
 )
-
-// version is set via -ldflags at build time.
-var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -236,7 +234,7 @@ func buildNotifiers(cfg *config.Config, logger *slog.Logger) map[string]notifier
 func versionString() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return version
+		return buildinfo.Version
 	}
-	return fmt.Sprintf("%s (go %s)", version, info.GoVersion)
+	return fmt.Sprintf("%s (go %s)", buildinfo.Version, info.GoVersion)
 }

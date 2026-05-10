@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juusomikkonen/domainturva/internal/buildinfo"
 	"github.com/juusomikkonen/domainturva/internal/config"
 )
 
@@ -86,7 +87,7 @@ func (c *HTTPChecker) attempt(ctx context.Context, s config.Site) CheckResult {
 	if err != nil {
 		return c.errorResult(s, err)
 	}
-	req.Header.Set("User-Agent", "domainturva/1 (+https://github.com/juusomikkonen/domainturva)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 
 	start := c.Now()
 	resp, err := c.Client.Do(req)
