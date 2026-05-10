@@ -139,12 +139,7 @@ func (s *Scheduler) consume(ctx context.Context, in <-chan checker.CheckResult) 
 }
 
 func (s *Scheduler) process(ctx context.Context, r checker.CheckResult) {
-	site := s.lookupSite(r.SiteName)
-	retries := 1
-	if site != nil {
-		retries = site.Retries + 1
-	}
-	out, err := s.Engine.Process(ctx, r, retries)
+	out, err := s.Engine.Process(ctx, r)
 	if err != nil {
 		s.Logger.Error("alerting process failed", "site", r.SiteName, "err", err)
 		return
@@ -161,15 +156,6 @@ func (s *Scheduler) process(ctx context.Context, r checker.CheckResult) {
 			CertSerial: da.CertSerial,
 		})
 	}
-}
-
-func (s *Scheduler) lookupSite(name string) *config.Site {
-	for i := range s.Cfg.Sites {
-		if s.Cfg.Sites[i].Name == name {
-			return &s.Cfg.Sites[i]
-		}
-	}
-	return nil
 }
 
 func (s *Scheduler) logResult(r checker.CheckResult, st storage.SiteState) {

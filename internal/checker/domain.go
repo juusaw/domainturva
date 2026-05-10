@@ -21,12 +21,23 @@ import (
 // DomainChecker resolves domain expiry via RDAP first, falling back to WHOIS.
 // Results are cached in storage so we don't re-hammer registrars.
 type DomainChecker struct {
-	Storage    storage.Storage
-	Logger     *slog.Logger
-	CacheTTL   time.Duration
-	RDAP       *rdap.Client
-	WhoisQuery func(domain string) (string, error)
-	Now        func() time.Time
+	Storage  storage.Storage
+	Logger   *slog.Logger
+	CacheTTL time.Duration
+	RDAP     *rdap.Client
+
+	// WhoisQuery is called when RDAP doesn't have the TLD. The default impl
+	// runs whois.Whois (which is not context-aware) on a goroutine and lets
+	// the caller bail out via ctx; the underlying TCP connection may linger
+	// for a while if the upstream registrar hangs, but the checker won't.
+	WhoisQuery func(ctx context.Context, domain string) (string, error)
+
+	// Per-call timeouts. We bound RDAP and WHOIS independently because RDAP
+	// is HTTP-based and usually fast, while WHOIS is line-based and can stall.
+	RDAPTimeout  time.Duration
+	WhoisTimeout time.Duration
+
+	Now func() time.Time
 }
 
 func NewDomainChecker(store storage.Storage, log *slog.Logger) *DomainChecker {
@@ -35,12 +46,36 @@ func NewDomainChecker(store storage.Storage, log *slog.Logger) *DomainChecker {
 		Logger:   log,
 		CacheTTL: 6 * time.Hour,
 		RDAP: &rdap.Client{
-			HTTP: &http.Client{Transport: buildinfo.WrapTransport(nil)},
+			HTTP: &http.Client{
+				Transport: buildinfo.WrapTransport(nil),
+				Timeout:   15 * time.Second,
+			},
 		},
-		WhoisQuery: func(domain string) (string, error) {
-			return whois.Whois(domain)
-		},
-		Now: time.Now,
+		WhoisQuery:   defaultWhoisQuery,
+		RDAPTimeout:  15 * time.Second,
+		WhoisTimeout: 30 * time.Second,
+		Now:          time.Now,
+	}
+}
+
+// defaultWhoisQuery wraps whois.Whois so it honours ctx cancellation. The
+// inner whois call is not cancelable; if ctx fires first we abandon the
+// goroutine, which will exit when the underlying TCP read returns.
+func defaultWhoisQuery(ctx context.Context, domain string) (string, error) {
+	type result struct {
+		raw string
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		raw, err := whois.Whois(domain)
+		ch <- result{raw, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.raw, r.err
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
 }
 
@@ -102,7 +137,7 @@ func (c *DomainChecker) lookup(ctx context.Context, domain string) (time.Time, s
 	} else {
 		c.Logger.Debug("rdap miss", "domain", domain, "err", err)
 	}
-	if t, err := c.lookupWhois(domain); err == nil {
+	if t, err := c.lookupWhois(ctx, domain); err == nil {
 		return t, "whois", nil
 	} else {
 		return time.Time{}, "", fmt.Errorf("rdap and whois both failed: %w", err)
@@ -110,8 +145,10 @@ func (c *DomainChecker) lookup(ctx context.Context, domain string) (time.Time, s
 }
 
 func (c *DomainChecker) lookupRDAP(ctx context.Context, domain string) (time.Time, error) {
+	cctx, cancel := context.WithTimeout(ctx, c.RDAPTimeout)
+	defer cancel()
 	req := &rdap.Request{Type: rdap.DomainRequest, Query: domain}
-	req = req.WithContext(ctx)
+	req = req.WithContext(cctx)
 	resp, err := c.RDAP.Do(req)
 	if err != nil {
 		return time.Time{}, err
@@ -131,8 +168,10 @@ func (c *DomainChecker) lookupRDAP(ctx context.Context, domain string) (time.Tim
 	return time.Time{}, fmt.Errorf("rdap: no expiration event")
 }
 
-func (c *DomainChecker) lookupWhois(domain string) (time.Time, error) {
-	raw, err := c.WhoisQuery(domain)
+func (c *DomainChecker) lookupWhois(ctx context.Context, domain string) (time.Time, error) {
+	cctx, cancel := context.WithTimeout(ctx, c.WhoisTimeout)
+	defer cancel()
+	raw, err := c.WhoisQuery(cctx, domain)
 	if err != nil {
 		return time.Time{}, err
 	}

@@ -41,7 +41,12 @@ type alertWithMeta struct {
 // state/dedup info needed, and returns the new state plus alerts to dispatch.
 //
 // Caller is responsible for persisting NewState and dispatching Alerts.
-func (e *Engine) Process(ctx context.Context, r checker.CheckResult, retriesNeeded int) (Outcome, error) {
+//
+// HTTP retries are owned by the HTTPChecker — by the time a CheckResult of
+// status=down reaches us, all attempts have been exhausted. So the engine
+// flips state on the first down result; it does not gate on accumulated
+// consecutive failures.
+func (e *Engine) Process(ctx context.Context, r checker.CheckResult) (Outcome, error) {
 	now := e.now()
 	prev, _, err := e.Store.GetSiteState(ctx, r.SiteName)
 	if err != nil {
@@ -55,7 +60,7 @@ func (e *Engine) Process(ctx context.Context, r checker.CheckResult, retriesNeed
 
 	switch r.Type {
 	case checker.CheckHTTP:
-		newState, alerts := decideHTTP(prev, r, retriesNeeded, now)
+		newState, alerts := decideHTTP(prev, r, now)
 		return Outcome{NewState: newState, Alerts: alerts}, nil
 	case checker.CheckSSL:
 		alerts, err := e.decideSSL(ctx, prev, r, now)
@@ -89,7 +94,7 @@ func (e *Engine) now() time.Time {
 // Baseline rule: if prev.Status is "unknown", we never produce a down/recovery
 // alert — the first observed state becomes the baseline. This avoids spurious
 // pages on monitor restart.
-func decideHTTP(prev storage.SiteState, r checker.CheckResult, retriesNeeded int, now time.Time) (storage.SiteState, []alertWithMeta) {
+func decideHTTP(prev storage.SiteState, r checker.CheckResult, now time.Time) (storage.SiteState, []alertWithMeta) {
 	ns := prev
 	ns.LastCheckAt = now
 	ns.LastError = r.Error
@@ -106,9 +111,9 @@ func decideHTTP(prev storage.SiteState, r checker.CheckResult, retriesNeeded int
 				Title:   "Recovered",
 				Message: fmt.Sprintf("%s is back up after %s.", r.SiteName, formatDuration(downtime)),
 				Details: map[string]any{
-					"downtime":      formatDuration(downtime),
-					"status_code":   r.StatusCode,
-					"response_ms":   r.ResponseMS,
+					"downtime":    formatDuration(downtime),
+					"status_code": r.StatusCode,
+					"response_ms": r.ResponseMS,
 				},
 				At: now,
 			}}}
@@ -119,12 +124,9 @@ func decideHTTP(prev storage.SiteState, r checker.CheckResult, retriesNeeded int
 		return ns, nil
 	}
 
-	// Failure path.
+	// Failure path. The HTTPChecker has already exhausted its internal retry
+	// budget by the time we see status=down, so flip on the first down result.
 	ns.ConsecutiveFailures = prev.ConsecutiveFailures + 1
-	if ns.ConsecutiveFailures < retriesNeeded {
-		// Not enough failures to flip yet — keep prior status.
-		return ns, nil
-	}
 	if prev.Status == string(checker.StatusDown) {
 		// Already down, no new alert.
 		return ns, nil
@@ -141,9 +143,9 @@ func decideHTTP(prev storage.SiteState, r checker.CheckResult, retriesNeeded int
 		Title:   "DOWN",
 		Message: fmt.Sprintf("%s is down: %s", r.SiteName, r.Error),
 		Details: map[string]any{
-			"error":         r.Error,
-			"status_code":   r.StatusCode,
-			"consec_fails":  ns.ConsecutiveFailures,
+			"error":        r.Error,
+			"status_code":  r.StatusCode,
+			"consec_fails": ns.ConsecutiveFailures,
 		},
 		At: now,
 	}}}
