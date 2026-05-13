@@ -16,12 +16,14 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sync"
 	"syscall"
 
 	"github.com/juusomikkonen/domainturva/internal/alerting"
 	"github.com/juusomikkonen/domainturva/internal/buildinfo"
 	"github.com/juusomikkonen/domainturva/internal/checker"
 	"github.com/juusomikkonen/domainturva/internal/config"
+	"github.com/juusomikkonen/domainturva/internal/health"
 	"github.com/juusomikkonen/domainturva/internal/notifier"
 	"github.com/juusomikkonen/domainturva/internal/scheduler"
 	"github.com/juusomikkonen/domainturva/internal/storage"
@@ -147,7 +149,22 @@ func runCmd(args []string) {
 
 	logger.Info("domainturva starting",
 		"version", versionString(), "sites", len(cfg.Sites), "notifiers", len(notifiers))
+
+	var wg sync.WaitGroup
+	healthSrv := health.New(cfg, store, logger)
+	if healthSrv.Enabled() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := healthSrv.Run(ctx); err != nil {
+				logger.Error("health server", "err", err)
+				cancel()
+			}
+		}()
+	}
+
 	sched.Run(ctx)
+	wg.Wait()
 	logger.Info("domainturva stopped")
 }
 

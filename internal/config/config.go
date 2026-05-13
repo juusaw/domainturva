@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -21,9 +22,16 @@ type Config struct {
 	SSLWarnDays    []int `yaml:"ssl_warn_days"`
 	DomainWarnDays []int `yaml:"domain_warn_days"`
 
-	Notifiers []Notifier `yaml:"notifiers"`
-	Routing   Routing    `yaml:"routing"`
-	Storage   Storage    `yaml:"storage"`
+	Notifiers   []Notifier  `yaml:"notifiers"`
+	Routing     Routing     `yaml:"routing"`
+	Storage     Storage     `yaml:"storage"`
+	HealthCheck HealthCheck `yaml:"healthcheck"`
+}
+
+// HealthCheck configures the optional /healthz HTTP listener. Empty Listen
+// disables it; bind to 127.0.0.1 unless you want it reachable externally.
+type HealthCheck struct {
+	Listen string `yaml:"listen"`
 }
 
 type Site struct {
@@ -289,6 +297,12 @@ func (c *Config) Validate() error {
 	for _, d := range c.DomainWarnDays {
 		if d <= 0 {
 			return fmt.Errorf("domain_warn_days: values must be > 0")
+		}
+	}
+
+	if c.HealthCheck.Listen != "" {
+		if _, _, err := net.SplitHostPort(c.HealthCheck.Listen); err != nil {
+			return fmt.Errorf("healthcheck.listen: %w", err)
 		}
 	}
 	return nil

@@ -57,3 +57,11 @@ routing:
 
 storage:
   path: /var/db/domainturva/domainturva.db
+
+# Optional /healthz HTTP endpoint. Omit or set listen to "" to disable.
+# Bind to 127.0.0.1 unless you intend external pollers to reach it.
+# Returns 200 with a small JSON body when healthy, 503 when checks are stale
+# (no HTTP check observed within 2× the longest configured site interval,
+# after a startup grace window).
+healthcheck:
+  listen: 127.0.0.1:9090

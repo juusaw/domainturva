@@ -105,6 +105,35 @@ The first observed state for a brand-new site is treated as the baseline;
 no alert fires until the *next* transition. This avoids spurious pages on
 monitor restart.
 
+## Healthcheck endpoint
+
+Opt-in; set `healthcheck.listen` in the config to bind a small HTTP server.
+
+```
+GET /healthz
+```
+
+- `200 OK` with a JSON body when at least one HTTP check has completed within
+  2× the longest configured site interval (or within the same window after
+  startup — startup grace).
+- `503 Service Unavailable` when the most recent check is older than that.
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "version": "v0.1.0",
+  "uptime_sec": 1234,
+  "sites": 4,
+  "latest_check_at": "2026-05-08T12:00:00Z",
+  "stale_after": "1m0s",
+  "stale": false
+}
+```
+
+Bind to `127.0.0.1` unless something outside the box needs to reach it.
+
 ## Supported notifiers
 
 - **slack** — incoming webhook
